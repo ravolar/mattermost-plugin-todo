@@ -13,6 +13,43 @@ A plugin to track Todo issues in a list and send you daily reminders about your 
 
 **[Help Wanted](https://github.com/mattermost/mattermost-plugin-todo/issues?utf8=%E2%9C%93&q=is%3Aopen+label%3A%22up+for+grabs%22+label%3A%22help+wanted%22+sort%3Aupdated-desc)**
 
+## Ravolar fork note
+
+This repository is maintained by Ravolar as a fork of the upstream `mattermost-community/mattermost-plugin-todo`.
+
+Upstream remains the original product source, but this fork is the deployable source of truth for the Ravolar runtime whenever we need organization-specific fixes for the `Tasks <-> Mattermost` workflow.
+
+### Current Ravolar-specific fix
+
+The first fork-specific fix addresses stale values in the Mattermost `Edit todo` modal:
+
+- the todo list could already show fresh `title/description` received from Ravolar Tasks;
+- but opening `Edit todo` still showed old values from local React state;
+- after `Cancel`, the list returned to the fresh values again.
+
+This fork fixes that by synchronizing the edit form state with the latest `issue.message` and `issue.description` while the item is not actively being edited.
+
+### How this fork is maintained
+
+- `master` is the main deployable branch of the Ravolar fork;
+- new changes should be made in short-lived feature branches and merged back into `master`;
+- merged feature branches should be deleted after merge;
+- opening a PR to upstream is optional and depends on whether we want to contribute the fix back, but it is not required for the Ravolar production runtime.
+
+### Build output
+
+To build an installable plugin archive for Mattermost:
+
+```bash
+make dist
+```
+
+The resulting plugin bundle is created in:
+
+```bash
+dist/
+```
+
 ## Install
 
 1. Go the releases page and download the latest release.
