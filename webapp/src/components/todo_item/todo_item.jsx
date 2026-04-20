@@ -1,4 +1,4 @@
-import React, {useState, useRef, useCallback} from 'react';
+import React, {useState, useRef, useCallback, useEffect} from 'react';
 import PropTypes from 'prop-types';
 
 import {changeOpacity, makeStyleFromTheme} from 'mattermost-redux/utils/theme_utils';
@@ -55,6 +55,13 @@ function TodoItem(props) {
 
     const issueMessage = PostUtils.messageHtmlToComponent(htmlFormattedMessage);
     const issueDescription = PostUtils.messageHtmlToComponent(htmlFormattedDescription);
+
+    useEffect(() => {
+        if (!editTodo) {
+            setMessage(issue.message || '');
+            setDescription(issue.description || '');
+        }
+    }, [issue.message, issue.description, editTodo]);
 
     let listPositionMessage = '';
     let createdMessage = 'Created ';
