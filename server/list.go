@@ -219,30 +219,30 @@ func (l *listManager) EditIssue(userID, issueID, newMessage, newDescription stri
 	return ir.ForeignUserID, list, oldMessage, nil
 }
 
-func (l *listManager) ChangeAssignment(issueID string, userID string, sendTo string) (issue *Issue, oldOwner string, err error) {
+func (l *listManager) ChangeAssignment(issueID string, userID string, sendTo string) (issue *Issue, oldOwner string, receiverIssueID string, err error) {
 	issue, err = l.store.GetIssue(issueID)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
 	list, ir, _ := l.store.GetIssueListAndReference(userID, issueID)
 	if ir == nil {
-		return nil, "", errors.New("reference not found")
+		return nil, "", "", errors.New("reference not found")
 	}
 
 	if (list == InListKey) || (ir.ForeignIssueID != "" && list == MyListKey) {
-		return nil, "", errors.New("trying to change the assignment of a todo not owned")
+		return nil, "", "", errors.New("trying to change the assignment of a todo not owned")
 	}
 
 	if ir.ForeignUserID != "" {
 		// Remove reference from foreign user
 		foreignList, foreignIR, _ := l.store.GetIssueListAndReference(ir.ForeignUserID, ir.ForeignIssueID)
 		if foreignIR == nil {
-			return nil, "", errors.New("reference not found")
+			return nil, "", "", errors.New("reference not found")
 		}
 
 		if err := l.store.RemoveReference(ir.ForeignUserID, ir.ForeignIssueID, foreignList); err != nil {
-			return nil, "", err
+			return nil, "", "", err
 		}
 
 		_, err := l.store.GetAndRemoveIssue(ir.ForeignIssueID)
@@ -253,36 +253,36 @@ func (l *listManager) ChangeAssignment(issueID string, userID string, sendTo str
 
 	if userID == sendTo && list == OutListKey {
 		if err := l.store.RemoveReference(userID, issueID, OutListKey); err != nil {
-			return nil, "", err
+			return nil, "", "", err
 		}
 
 		if err := l.store.AddReference(userID, issueID, MyListKey, "", ""); err != nil {
-			return nil, "", err
+			return nil, "", "", err
 		}
 
-		return issue, ir.ForeignUserID, nil
+		return issue, ir.ForeignUserID, issueID, nil
 	}
 
 	if userID != sendTo {
 		if err := l.store.RemoveReference(userID, issueID, list); err != nil {
-			return nil, "", err
+			return nil, "", "", err
 		}
 	}
 
 	receiverIssue := newIssue(issue.Message, issue.PostPermalink, issue.Description, issue.PostID)
 	if err := l.store.SaveIssue(receiverIssue); err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
 	if err := l.store.AddReference(userID, issueID, OutListKey, sendTo, receiverIssue.ID); err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
 	if err := l.store.AddReference(sendTo, receiverIssue.ID, InListKey, userID, issue.ID); err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
-	return issue, ir.ForeignUserID, nil
+	return issue, ir.ForeignUserID, receiverIssue.ID, nil
 }
 
 func (l *listManager) AcceptIssue(userID, issueID string) (todoMessage string, foreignUserID string, outErr error) {

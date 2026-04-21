@@ -50,7 +50,7 @@ type ListManager interface {
 	// EditIssue updates the message on an issue
 	EditIssue(userID string, issueID string, newMessage string, newDescription string) (foreignUserID string, list string, oldMessage string, err error)
 	// ChangeAssignment updates an issue to assign a different person
-	ChangeAssignment(issueID string, userID string, sendTo string) (issue *Issue, oldOwner string, err error)
+	ChangeAssignment(issueID string, userID string, sendTo string) (issue *Issue, oldOwner string, receiverIssueID string, err error)
 	// GetUserName returns the readable username from userID
 	GetUserName(userID string) string
 }
@@ -414,7 +414,7 @@ func (p *Plugin) handleChangeAssignment(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	issue, oldOwner, err := p.listManager.ChangeAssignment(changeRequest.ID, userID, receiver.Id)
+	issue, oldOwner, receiverIssueID, err := p.listManager.ChangeAssignment(changeRequest.ID, userID, receiver.Id)
 	if err != nil {
 		msg := "Unable to change the assignment of an issue"
 		p.API.LogError(msg, "err", err.Error())
@@ -430,7 +430,7 @@ func (p *Plugin) handleChangeAssignment(w http.ResponseWriter, r *http.Request) 
 	if receiver.Id != userID {
 		p.sendRefreshEvent(receiver.Id, []string{InListKey})
 		receiverMessage := fmt.Sprintf("You have received a new Todo from @%s", userName)
-		p.PostBotCustomDM(receiver.Id, receiverMessage, issue.Message, issue.PostPermalink, changeRequest.ID)
+		p.PostBotCustomDM(receiver.Id, receiverMessage, issue.Message, issue.PostPermalink, receiverIssueID)
 	}
 	if oldOwner != "" {
 		p.sendRefreshEvent(oldOwner, []string{InListKey, MyListKey})

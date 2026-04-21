@@ -19,15 +19,25 @@ This repository is maintained by Ravolar as a fork of the upstream `mattermost-c
 
 Upstream remains the original product source, but this fork is the deployable source of truth for the Ravolar runtime whenever we need organization-specific fixes for the `Tasks <-> Mattermost` workflow.
 
-### Current Ravolar-specific fix
+### Current Ravolar-specific fixes
 
-The first fork-specific fix addresses stale values in the Mattermost `Edit todo` modal:
+This fork currently carries two Ravolar-specific fixes.
+
+#### Fresh values in `Edit todo`
 
 - the todo list could already show fresh `title/description` received from Ravolar Tasks;
 - but opening `Edit todo` still showed old values from local React state;
 - after `Cancel`, the list returned to the fresh values again.
 
 This fork fixes that by synchronizing the edit form state with the latest `issue.message` and `issue.description` while the item is not actively being edited.
+
+#### Correct accept button after reassignment
+
+When `/change_assignment` delegates an existing todo to another user, the plugin creates a new incoming issue for the receiver. The bot DM must reference that receiver-side issue id.
+
+The upstream behavior sent the sender-side issue id in the DM action payload. That made the receiver see the task, but pressing `Accept` from the Mattermost message attempted to accept the wrong id and failed.
+
+This fork returns the receiver issue id from `ChangeAssignment` and uses it in the bot DM.
 
 ### How this fork is maintained
 
