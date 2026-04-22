@@ -21,7 +21,7 @@ Upstream remains the original product source, but this fork is the deployable so
 
 ### Current Ravolar-specific fixes
 
-This fork currently carries two Ravolar-specific fixes.
+This fork currently carries three Ravolar-specific fixes.
 
 #### Fresh values in `Edit todo`
 
@@ -38,6 +38,12 @@ When `/change_assignment` delegates an existing todo to another user, the plugin
 The upstream behavior sent the sender-side issue id in the DM action payload. That made the receiver see the task, but pressing `Accept` from the Mattermost message attempted to accept the wrong id and failed.
 
 This fork returns the receiver issue id from `ChangeAssignment` and uses it in the bot DM.
+
+#### Reassignment of accepted delegated todos
+
+The upstream plugin blocks `change_assignment` for a delegated todo after the receiver has accepted it into `My Todos`. For Ravolar Tasks this breaks chained delegation such as `Marina -> Vadim -> Marina/Pete`.
+
+This fork allows reassignment from `My Todos` for accepted delegated todos. The current user's local issue becomes the sender-side `out` issue, and the new receiver gets a fresh incoming issue.
 
 ### How this fork is maintained
 

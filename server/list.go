@@ -230,7 +230,7 @@ func (l *listManager) ChangeAssignment(issueID string, userID string, sendTo str
 		return nil, "", "", errors.New("reference not found")
 	}
 
-	if (list == InListKey) || (ir.ForeignIssueID != "" && list == MyListKey) {
+	if list == InListKey {
 		return nil, "", "", errors.New("trying to change the assignment of a todo not owned")
 	}
 
