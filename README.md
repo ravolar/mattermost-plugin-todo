@@ -45,6 +45,8 @@ The upstream plugin blocks `change_assignment` for a delegated todo after the re
 
 This fork allows reassignment from `My Todos` for accepted delegated todos. The current user's local issue becomes the sender-side `out` issue, and the new receiver gets a fresh incoming issue.
 
+The Core side must still resolve the actor-specific Mattermost issue id before calling `/change_assignment`, because Mattermost stores sender and receiver copies as different physical issue ids.
+
 ### How this fork is maintained
 
 - `master` is the main deployable branch of the Ravolar fork;
@@ -64,6 +66,19 @@ The resulting plugin bundle is created in:
 
 ```bash
 dist/
+```
+
+For the Ravolar self-hosted Mattermost upload flow, use a flat `.tar.gz` archive where `plugin.json` is at the archive root. The standard `make dist` output may contain an extra top-level `com.mattermost.plugin-todo/` directory, so the operational build step is:
+
+1. run `make dist`;
+2. unpack the generated archive;
+3. repack the inner `com.mattermost.plugin-todo` directory as the archive root;
+4. verify `tar -tzf <archive>` shows `./plugin.json`.
+
+The currently verified archive for chained delegation is:
+
+```bash
+dist/com.mattermost.plugin-todo-ravolar-chain-delegation-20260422.tar.gz
 ```
 
 ## Install
