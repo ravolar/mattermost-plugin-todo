@@ -364,7 +364,7 @@ func (p *Plugin) handleEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	foreignUserID, list, oldMessage, err := p.listManager.EditIssue(userID, editRequest.ID, editRequest.Message, editRequest.Description)
+	foreignUserID, list, _, err := p.listManager.EditIssue(userID, editRequest.ID, editRequest.Message, editRequest.Description)
 	if err != nil {
 		msg := "Unable to edit message"
 		p.API.LogError(msg, "err", err.Error())
@@ -383,10 +383,6 @@ func (p *Plugin) handleEdit(w http.ResponseWriter, r *http.Request) {
 			lists = []string{OutListKey}
 		}
 		p.sendRefreshEvent(foreignUserID, lists)
-
-		userName := p.listManager.GetUserName(userID)
-		message := fmt.Sprintf("@%s modified a Todo from:\n%s\nTo:\n%s", userName, oldMessage, editRequest.Message)
-		p.PostBotDM(foreignUserID, message)
 	}
 }
 

@@ -21,7 +21,18 @@ Upstream remains the original product source, but this fork is the deployable so
 
 ### Current Ravolar-specific fixes
 
-This fork currently carries three Ravolar-specific fixes.
+This fork currently carries four Ravolar-specific fixes.
+
+#### Silent title and description synchronization
+
+Editing a delegated todo updates two physical Mattermost Todo records. The
+upstream edit handler also sent the other user a bot DM after every edit.
+Ravolar Tasks autosaves title and description changes, so normal typing could
+produce repeated `modified a Todo` messages.
+
+This fork keeps the mirrored record update and WebSocket refresh for both
+users, but treats title and description edits as silent data synchronization.
+Assignment and other lifecycle notifications are not changed.
 
 #### Fresh values in `Edit todo`
 
