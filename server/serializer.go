@@ -3,9 +3,13 @@ package main
 import (
 	"encoding/json"
 	"io"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/pkg/errors"
 )
+
+const maxClientRequestIDLength = 128
 
 type TelemetryAPIRequest struct {
 	Event      string
@@ -34,11 +38,12 @@ func (t *TelemetryAPIRequest) IsValid() error {
 }
 
 type AddAPIRequest struct {
-	Message       string `json:"message"`
-	PostPermalink string `json:"postPermalink"`
-	Description   string `json:"description"`
-	SendTo        string `json:"send_to"`
-	PostID        string `json:"post_id"`
+	Message         string `json:"message"`
+	PostPermalink   string `json:"postPermalink"`
+	Description     string `json:"description"`
+	SendTo          string `json:"send_to"`
+	PostID          string `json:"post_id"`
+	ClientRequestID string `json:"client_request_id"`
 }
 
 func GetAddIssuePayloadFromJSON(data io.Reader) (*AddAPIRequest, error) {
@@ -57,6 +62,18 @@ func (a *AddAPIRequest) IsValid() error {
 
 	if a.Message == "" {
 		return errors.New("message is required")
+	}
+
+	if a.ClientRequestID != "" {
+		if strings.TrimSpace(a.ClientRequestID) != a.ClientRequestID {
+			return errors.New("client_request_id must not have leading or trailing whitespace")
+		}
+		if utf8.RuneCountInString(a.ClientRequestID) > maxClientRequestIDLength {
+			return errors.Errorf("client_request_id must be %d characters or less", maxClientRequestIDLength)
+		}
+		if strings.IndexFunc(a.ClientRequestID, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+			return errors.New("client_request_id must not contain control characters")
+		}
 	}
 
 	return nil

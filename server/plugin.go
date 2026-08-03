@@ -30,7 +30,7 @@ const (
 // ListManager represents the logic on the lists
 type ListManager interface {
 	// AddIssue adds a todo to userID's myList with the message
-	AddIssue(userID, message, postPermalink, description, postID string) (*Issue, error)
+	AddIssue(userID, message, postPermalink, description, postID, clientRequestID string) (*Issue, error)
 	// SendIssue sends the todo with the message from senderID to receiverID and returns the receiver's issueID
 	SendIssue(senderID, receiverID, message, postPermalink, description, postID string) (string, error)
 	// GetIssueList gets the todos on listID for userID
@@ -124,6 +124,7 @@ func (p *Plugin) initializeAPI() {
 	p.router = mux.NewRouter()
 	p.router.Use(p.withRecovery)
 
+	p.router.HandleFunc("/capabilities", p.checkAuth(p.handleCapabilities)).Methods(http.MethodGet)
 	p.router.HandleFunc("/add", p.checkAuth(p.handleAdd)).Methods(http.MethodPost)
 	p.router.HandleFunc("/lists", p.checkAuth(p.handleLists)).Methods(http.MethodGet)
 	p.router.HandleFunc("/remove", p.checkAuth(p.handleRemove)).Methods(http.MethodPost)
@@ -137,6 +138,28 @@ func (p *Plugin) initializeAPI() {
 
 	// 404 handler
 	p.router.Handle("{anything:.*}", http.NotFoundHandler())
+}
+
+func (p *Plugin) handleCapabilities(w http.ResponseWriter, _ *http.Request) {
+	response := struct {
+		ProtocolVersion int `json:"protocol_version"`
+		Features        struct {
+			AddClientRequestID  bool `json:"add_client_request_id"`
+			AddResponseIdentity bool `json:"add_response_identity"`
+			AddIdempotent       bool `json:"add_idempotent"`
+			AddTerminalReplay   bool `json:"add_terminal_replay"`
+			ListClientRequestID bool `json:"list_client_request_id"`
+		} `json:"features"`
+	}{ProtocolVersion: 1}
+	response.Features.AddClientRequestID = true
+	response.Features.AddResponseIdentity = true
+	response.Features.AddIdempotent = true
+	response.Features.AddTerminalReplay = true
+	response.Features.ListClientRequestID = true
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		p.API.LogError("Unable to write capabilities response", "err", err.Error())
+	}
 }
 
 // ServeHTTP demonstrates a plugin that handles HTTP requests by greeting the world.
@@ -209,23 +232,45 @@ func (p *Plugin) handleAdd(w http.ResponseWriter, r *http.Request) {
 		p.handleErrorWithCode(w, http.StatusBadRequest, "Unable to validate add issue payload.", err)
 		return
 	}
+	if addRequest.ClientRequestID != "" && addRequest.SendTo != "" {
+		p.handleErrorWithCode(
+			w,
+			http.StatusBadRequest,
+			"Unable to validate add issue payload.",
+			errors.New("client_request_id is supported only for a self todo without send_to"),
+		)
+		return
+	}
 
 	senderName := p.listManager.GetUserName(userID)
 
 	if addRequest.SendTo == "" {
-		_, err = p.listManager.AddIssue(userID, addRequest.Message, addRequest.PostPermalink, addRequest.Description, addRequest.PostID)
+		var issue *Issue
+		issue, err = p.listManager.AddIssue(
+			userID,
+			addRequest.Message,
+			addRequest.PostPermalink,
+			addRequest.Description,
+			addRequest.PostID,
+			addRequest.ClientRequestID,
+		)
 		if err != nil {
 			p.API.LogError(ErrorMsgAddIssue, "err", err.Error())
-			p.handleErrorWithCode(w, http.StatusInternalServerError, ErrorMsgAddIssue, err)
+			status := http.StatusInternalServerError
+			if errors.Is(err, errClientRequestIDConflict) {
+				status = http.StatusConflict
+			}
+			p.handleErrorWithCode(w, status, ErrorMsgAddIssue, err)
 			return
 		}
 
-		p.trackAddIssue(userID, sourceWebapp, addRequest.PostID != "")
-
-		p.sendRefreshEvent(userID, []string{MyListKey})
-
-		replyMessage := fmt.Sprintf("@%s attached a todo to this thread", senderName)
-		p.postReplyIfNeeded(addRequest.PostID, replyMessage, addRequest.Message, addRequest.PostPermalink)
+		if !issue.Replay {
+			p.trackAddIssue(userID, sourceWebapp, addRequest.PostID != "")
+			p.sendRefreshEvent(userID, []string{MyListKey})
+			replyMessage := fmt.Sprintf("@%s attached a todo to this thread", senderName)
+			p.postReplyIfNeeded(addRequest.PostID, replyMessage, addRequest.Message, addRequest.PostPermalink)
+		}
+		p.writeAddResponse(w, issue)
 
 		return
 	}
@@ -239,7 +284,8 @@ func (p *Plugin) handleAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if receiver.Id == userID {
-		_, err = p.listManager.AddIssue(userID, addRequest.Message, addRequest.Description, addRequest.PostID, addRequest.PostPermalink)
+		var issue *Issue
+		issue, err = p.listManager.AddIssue(userID, addRequest.Message, addRequest.PostPermalink, addRequest.Description, addRequest.PostID, "")
 		if err != nil {
 			p.API.LogError(ErrorMsgAddIssue, "err", err.Error())
 			p.handleErrorWithCode(w, http.StatusInternalServerError, ErrorMsgAddIssue, err)
@@ -252,6 +298,7 @@ func (p *Plugin) handleAdd(w http.ResponseWriter, r *http.Request) {
 
 		replyMessage := fmt.Sprintf("@%s attached a todo to this thread", senderName)
 		p.postReplyIfNeeded(addRequest.PostID, replyMessage, addRequest.Message, addRequest.PostPermalink)
+		p.writeAddResponse(w, issue)
 		return
 	}
 
@@ -284,6 +331,22 @@ func (p *Plugin) handleAdd(w http.ResponseWriter, r *http.Request) {
 
 	replyMessage := fmt.Sprintf("@%s sent @%s a todo attached to this thread", senderName, addRequest.SendTo)
 	p.postReplyIfNeeded(addRequest.PostID, replyMessage, addRequest.Message, addRequest.PostPermalink)
+	p.writeAddResponse(w, &Issue{ID: issueID})
+}
+
+func (p *Plugin) writeAddResponse(w http.ResponseWriter, issue *Issue) {
+	response := struct {
+		ID              string `json:"id"`
+		ClientRequestID string `json:"client_request_id"`
+		Terminal        bool   `json:"terminal"`
+	}{
+		ID:              issue.ID,
+		ClientRequestID: issue.ClientRequestID,
+		Terminal:        issue.TerminalReplay,
+	}
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		p.API.LogError("Unable to write add response", "err", err.Error())
+	}
 }
 
 func (p *Plugin) postReplyIfNeeded(postID, message, todo, postPermalink string) {
@@ -414,7 +477,11 @@ func (p *Plugin) handleChangeAssignment(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		msg := "Unable to change the assignment of an issue"
 		p.API.LogError(msg, "err", err.Error())
-		p.handleErrorWithCode(w, http.StatusInternalServerError, msg, err)
+		status := http.StatusInternalServerError
+		if errors.Is(err, errCorrelatedIssueAssignmentUnsupported) {
+			status = http.StatusConflict
+		}
+		p.handleErrorWithCode(w, status, msg, err)
 		return
 	}
 
